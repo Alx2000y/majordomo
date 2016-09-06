@@ -129,8 +129,42 @@ function run() {
    $out['SINGLE_REC']=1;
   }
   $this->data=$out;
-  $p=new parser(DIR_TEMPLATES.$this->name."/".$this->name.".html", $this->data, $this);
-  $this->result=$p->result;
+
+  if ($this->action=='') {
+
+  /*
+   $p=new parser(DIR_TEMPLATES.$this->name."/".$this->name.".html", $this->data, $this);
+   $this->result=$p->result;
+  */
+   require_once ROOT.'lib/smarty/Smarty.class.php';
+   $smarty = new Smarty;
+   $smarty->setCacheDir(ROOT.'cached/template_c');
+
+   $smarty->setTemplateDir(ROOT.'./templates')
+          ->setCompileDir(ROOT.'./cached/templates_c')
+          ->setCacheDir(ROOT.'./cached');
+
+   $smarty->debugging = false;
+   $smarty->caching = true;
+   $smarty->setCaching(120);
+
+   foreach($out as $k=>$v) {
+    $smarty->assign($k, $v);
+   }
+
+
+   @$this->result=$smarty->fetch(DIR_TEMPLATES.'scenes/scenes.tpl');
+
+
+
+  } else {
+
+   $p=new parser(DIR_TEMPLATES.$this->name."/".$this->name.".html", $this->data, $this);
+   $this->result=$p->result;
+
+
+  }
+
 }
 /**
 * BackEnd
@@ -680,6 +714,13 @@ function usual(&$out) {
      // 
      echo "OK";
     }
+
+    endMeasure('TOTAL');
+
+    if ($_GET['performance']) {
+     performanceReport();
+    }
+
     exit;
  }
 
@@ -1252,14 +1293,22 @@ function usual(&$out) {
 
  function getStyles($type='') {
 
+  startMeasure('getStyles');
   $path=ROOT.'cms/scenes/styles/'.$type;
 
   if (!is_dir($path)) {
    return;
   }
 
-  if (is_dir($path)) {
+   $cache_file=ROOT.'cached/styles_'.$type.'.txt';
 
+   //if (file_exists($cache_file) && (time()-filemtime($cache_file)<1*60*60)) {
+   // $styles_recs=unserialize(LoadFile($cache_file));
+   //} else {
+
+
+
+   startMeasure('openAndReadDir');
    if ($handle = opendir($path)) {
     $style_recs=array();
     while (false !== ($entry = readdir($handle))) {
@@ -1364,6 +1413,14 @@ function usual(&$out) {
      }
     }
 
+    //SaveFile($cache_file, serialize($styles_recs));
+    endMeasure('openAndReadDir');
+
+    }
+
+   //}
+
+
     if (is_array($styles_recs)) {
      $res_styles=array();
      foreach($styles_recs as $k=>$v) {
@@ -1371,12 +1428,14 @@ function usual(&$out) {
      }
     }
 
-   }
+
+
+   endMeasure('getStyles');
    return $res_styles;
-  }
 
   
  }
+
 
  /**
  * Title
@@ -1468,6 +1527,7 @@ elm_states - Element states
  elements: ID int(10) unsigned NOT NULL auto_increment
  elements: SCENE_ID int(10) NOT NULL DEFAULT '0'
  elements: TITLE varchar(255) NOT NULL DEFAULT ''
+ elements: SYSTEM varchar(255) NOT NULL DEFAULT ''
  elements: TYPE varchar(255) NOT NULL DEFAULT ''
  elements: CSS_STYLE varchar(255) NOT NULL DEFAULT ''
  elements: LINKED_OBJECT varchar(255) NOT NULL DEFAULT ''
@@ -1491,6 +1551,7 @@ elm_states - Element states
  elements: S3D_SCENE varchar(255) NOT NULL DEFAULT ''
  elements: SMART_REPEAT int(3) NOT NULL DEFAULT '0'
  elements: EASY_CONFIG int(3) NOT NULL DEFAULT '0'
+ elements: APPEAR_ANIMATION int(3) NOT NULL DEFAULT '0'
 
  elm_states: ID int(10) unsigned NOT NULL auto_increment
  elm_states: ELEMENT_ID int(10) NOT NULL DEFAULT '0'

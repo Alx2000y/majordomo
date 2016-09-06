@@ -199,6 +199,9 @@ function usual(&$out) {
   $out['VOLUMES'][]=$rec;
  }
 
+ if (!$terminal['CANPLAY']) {
+  $terminal=SQLSelectOne("SELECT * FROM terminals WHERE CANPLAY=1 ORDER BY IS_ONLINE DESC LIMIT 1");
+ }
 
 
  global $ajax;
@@ -222,6 +225,10 @@ function usual(&$out) {
     $terminal['PLAYER_PORT']='8080';
    } elseif (!$terminal['PLAYER_PORT']) {
     $terminal['PLAYER_PORT']='80';
+   }
+
+   if ($terminal['NAME']=='MAIN' && $command=='volume') {
+    setGlobal('ThisComputer.volumeLevel', $volume);
    }
 
     if ($terminal['PLAYER_TYPE']=='vlc' || $terminal['PLAYER_TYPE']=='') {

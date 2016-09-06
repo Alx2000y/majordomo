@@ -1,10 +1,88 @@
 <?php
-/*
- * @package MajorDoMo
- * @author Serge Dzheigalo <jey@tut.by> http://smartliving.ru/
- * @version 0.7
+/**
+ * Summary of sayReply
+ * @param mixed $ph        Phrase
+ * @param mixed $level     Level (default 0)
+ * @param mixed $replyto   Original request
+ * @return void
  */
+ function sayReply($ph, $level = 0, $replyto='') {
+  $source='';
+  if ($replyto) {
+   $terminal_rec=SQLSelectOne("SELECT * FROM terminals WHERE LATEST_REQUEST LIKE '%".DBSafe($replyto)."%' ORDER BY LATEST_REQUEST_TIME DESC LIMIT 1");
+   $orig_msg=SQLSelectOne("SELECT * FROM shouts WHERE SOURCE!='' AND MESSAGE LIKE '%".DBSafe($replyto)."%' AND (NOW()-ADDED)<=30 ORDER BY ADDED DESC LIMIT 1");
+   if ($orig_msg['ID']) {
+    $source=$orig_msg['SOURCE'];
+   }
+  } else {
+   $terminal_rec=SQLSelectOne("SELECT * FROM terminals WHERE (NOW()-LATEST_REQUEST_TIME)<=5 ORDER BY LATEST_REQUEST_TIME DESC LIMIT 1");
+  }
+  if (!$terminal_rec) {
+   say($ph, $level);
+  } else {
+   $source='terminal'.$terminal_rec['ID'];
+   $said_status=sayTo($ph, $level, $terminal_rec['NAME']);
+   if (!$said_status) {
+    say($ph, $level);
+   } else {
+    $rec = array();
+    $rec['MESSAGE']   = $ph;
+    $rec['ADDED']     = date('Y-m-d H:i:s');
+    $rec['ROOM_ID']   = 0;
+    $rec['MEMBER_ID'] = 0;
+    if ($level > 0) $rec['IMPORTANCE'] = $level;
+    $rec['ID'] = SQLInsert('shouts', $rec);
+   }
+  }
+  processSubscriptions('SAYREPLY', array('level' => $level, 'message' => $ph, 'replyto' => $replyto, 'source'=>$source));
+ }
 
+/**
+ * Summary of sayTo
+ * @param mixed $ph        Phrase
+ * @param mixed $level     Level (default 0)
+ * @param mixed $destination  Destination terminal name
+ * @return void
+ */
+ function sayTo($ph, $level = 0, $destination = '') {
+  if (!$destination) {
+   return 0;
+  }
+  processSubscriptions('SAYTO', array('level' => $level, 'message' => $ph, 'destination' => $destination));
+  $terminal_rec=SQLSelectOne("SELECT * FROM terminals WHERE NAME LIKE '".DBSafe($destination)."'");
+
+  if ($terminal_rec['LINKED_OBJECT'] && $terminal_rec['LEVEL_LINKED_PROPERTY']) {
+   $min_level=(int)getGlobal($terminal_rec['LINKED_OBJECT'].'.'.$terminal_rec['LEVEL_LINKED_PROPERTY']);
+  } else {
+   $min_level=(int)getGlobal('minMsgLevel');
+  }
+
+  if ($level < $min_level) {
+   return 0;
+  }
+
+  if ($terminal_rec['MAJORDROID_API'] && $terminal_rec['HOST']) {
+   $service_port='7999';
+   $in='tts:'.$ph;
+   $address=$terminal_rec['HOST'];
+   if (!preg_match('/^\d/',$address)) return 0;
+   $socket = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
+   if ($socket === false) {
+    return 0;
+   }
+   $result = socket_connect($socket, $address, $service_port);
+   if ($result === false) {
+    return 0;
+   }
+   socket_write($socket, $in, strlen($in));
+   socket_close($socket);
+   return 1;
+  } elseif ($terminal_rec['IS_ONLINE']) {
+   return 1;
+  }
+
+  return 0;
+ }
 
 /**
  * Summary of say
@@ -13,33 +91,30 @@
  * @param mixed $member_id Member ID (default 0)
  * @return void
  */
-function say($ph, $level = 0, $member_id = 0)
+function say($ph, $level = 0, $member_id = 0, $source = '')
 {
-   global $commandLine;
-   global $voicemode;
    global $noPatternMode;
-   global $ignorePushover;
-   global $ignorePushbullet;
-   global $ignoreGrowl;
-   global $ignoreTwitter;
+   global $ignoreVoice;
 
    $rec = array();
-
    $rec['MESSAGE']   = $ph;
    $rec['ADDED']     = date('Y-m-d H:i:s');
    $rec['ROOM_ID']   = 0;
    $rec['MEMBER_ID'] = $member_id;
+   $rec['SOURCE'] = $source;
 
    if ($level > 0) $rec['IMPORTANCE'] = $level;
-
    $rec['ID'] = SQLInsert('shouts', $rec);
 
    if ($member_id)
    {
       include_once(DIR_MODULES . 'patterns/patterns.class.php');
       $pt = new patterns();
-      $pt->checkAllPatterns($member_id);
-   
+      $res=$pt->checkAllPatterns($member_id);
+      if (!$res) {
+       processCommand($ph);
+      }
+      processSubscriptions('COMMAND', array('level' => $level, 'message' => $ph, 'member_id' => $member_id));
       return;
    }
 
@@ -48,74 +123,21 @@ function say($ph, $level = 0, $member_id = 0)
       eval(SETTINGS_HOOK_BEFORE_SAY);
    }
 
-   processSubscriptions('SAY', array('level' => $level, 'message' => $ph, 'member_id' => $member_id));
-
-   global $ignoreVoice;
    if ($level >= (int)getGlobal('minMsgLevel') && !$ignoreVoice && !$member_id)
    {
-      $lang = 'en';
-      
-      if (defined('SETTINGS_SITE_LANGUAGE'))
-      {
-         $lang = SETTINGS_SITE_LANGUAGE;
-      }
-      
-      if (defined('SETTINGS_VOICE_LANGUAGE'))
-      {
-         $lang = SETTINGS_VOICE_LANGUAGE;
-      }
-
-      if (SETTINGS_TTS_ENGINE == 'google')
-      {
-         $voice_file = GoogleTTS($ph, $lang);
-      }
-      elseif (SETTINGS_TTS_ENGINE == 'yandex')
-      {
-         $voice_file = YandexTTS($ph, $lang);
-      }
-      else
-      {
-         $voice_file = false;
-      }
-
       if (!defined('SETTINGS_SPEAK_SIGNAL') || SETTINGS_SPEAK_SIGNAL == '1')
       {
          $passed = time() - (int)getGlobal('lastSayTime');
-
-         // play intro-sound only if more than 20 seconds passed from the last one
          if ($passed > 20)
          {
-            setGlobal('lastSayTime', time());
             playSound('dingdong', 1, $level);
          }
       }
-
-      if ($voice_file)
-      {
-         @touch($voice_file);
-         playSound($voice_file, 1, $level);
-      }
-      else
-      {
-         if (IsWindowsOS())
-         {
-            safe_exec('cscript ' . DOC_ROOT . '/rc/sapi.js ' . $ph, 1, $level);
-         }
-         else
-         {
-            if ($lang == 'ru')
-            {
-               $ln = 'russian';
-            }
-            else
-            {
-               $ln = 'english';
-            }
-
-            safe_exec('echo "' . $ph . '" | festival --language ' . $ln . ' --tts', 1, $level);
-         }
-      }
    }
+
+   setGlobal('lastSayTime', time());
+   setGlobal('lastSayMessage', $ph);
+   processSubscriptions('SAY', array('level' => $level, 'message' => $ph, 'member_id' => $member_id, 'ignoreVoice'=>$ignoreVoice));
 
    if (!$noPatternMode)
    {
@@ -124,65 +146,17 @@ function say($ph, $level = 0, $member_id = 0)
       $pt->checkAllPatterns($member_id);
    }
 
-   if (defined('SETTINGS_PUSHOVER_USER_KEY') && SETTINGS_PUSHOVER_USER_KEY && !$ignorePushover)
-   {
-      include_once(ROOT . 'lib/pushover/pushover.inc.php');
-      if (defined('SETTINGS_PUSHOVER_LEVEL'))
-      {
-         if ($level >= SETTINGS_PUSHOVER_LEVEL)
-         {
-            postToPushover($ph);
-         }
-      }
-      elseif ($level > 0)
-      {
-         postToPushover($ph);
-      }
-   }
-
-   if (defined('SETTINGS_PUSHBULLET_KEY') && SETTINGS_PUSHBULLET_KEY && !$ignorePushbullet)
-   {
-      include_once(ROOT . 'lib/pushbullet/pushbullet.inc.php');
-      if (defined('SETTINGS_PUSHBULLET_PREFIX') && SETTINGS_PUSHBULLET_PREFIX)
-      {
-         $prefix = SETTINGS_PUSHBULLET_PREFIX . ' ';
-      }
-      else
-      {
-         $prefix = '';
-      }
-
-      if (defined('SETTINGS_PUSHBULLET_LEVEL'))
-      {
-         if ($level >= SETTINGS_PUSHBULLET_LEVEL)
-         {
-            postToPushbullet($prefix . $ph);
-         }
-      }
-      elseif ($level > 0)
-      {
-         postToPushbullet($prefix . $ph);
-      }
-   }
-
-   if (defined('SETTINGS_GROWL_ENABLE') && SETTINGS_GROWL_ENABLE && $level >= SETTINGS_GROWL_LEVEL && !$ignoreGrowl)
-   {
-      include_once(ROOT . 'lib/growl/growl.gntp.php');
-      $growl = new Growl(SETTINGS_GROWL_HOST, SETTINGS_GROWL_PASSWORD);
-      $growl->setApplication('MajorDoMo','Notifications');
-      //$growl->registerApplication('http://localhost/img/logo.png');
-      $growl->notify($ph);
-   }
-
-   if (defined('SETTINGS_TWITTER_CKEY') && SETTINGS_TWITTER_CKEY && !$ignoreTwitter)
-   {
-      postToTwitter($ph);
-   }
-
    if (defined('SETTINGS_HOOK_AFTER_SAY') && SETTINGS_HOOK_AFTER_SAY != '')
    {
       eval(SETTINGS_HOOK_AFTER_SAY);
    }
+
+   $terminals=SQLSelect("SELECT NAME FROM terminals WHERE IS_ONLINE=1 AND MAJORDROID_API=1");
+   $total=count($terminals);
+   for($i=0;$i<$total;$i++) {
+    sayTo($ph, $level, $terminals[$i]['NAME']);
+   }
+
 }
 
 /**
@@ -277,6 +251,7 @@ function isWeekEnd()
    if (date('w') == 0 || date('w') == 6)
       return true; // sunday, saturday
    
+
    return false;
 }
 
@@ -416,7 +391,8 @@ function deleteScheduledJob($id)
 function setTimeOut($title, $commands, $timeout)
 {
    clearTimeOut($title);
-   return addScheduledJob($title, $commands, time() + $timeout);
+   $res=addScheduledJob($title, $commands, time() + $timeout);
+   return $res;
 }
 
 /**
@@ -467,9 +443,11 @@ function runScheduledJobs()
       $url    = BASE_URL . '/objects/?job=' . $jobs[$i]['ID'];
       $result = trim(getURL($url, 0));
 
-      if ($result != 'OK')
+      $result = preg_replace('/<!--.+-->/is', '', $result);
+
+      if (!preg_match('/OK$/', $result))
       {
-         DebMes("Error executing job " . $jobs[$i]['TITLE'] . " (" . $jobs[$i]['ID'] . "): " . $result);
+         getLogger(__FILE__)->error(sprintf('Error executing job %s (%s): %s', $jobs[$i]['TITLE'], $jobs[$i]['ID'], $result));
       }
    }
 }
@@ -942,6 +920,10 @@ function checkAccess($object_type, $object_id)
 function registerError($code = 'custom', $details = '')
 {
    $code = trim($code);
+
+   if ($code == 'sql') {
+    return 0;
+   }
    
    if (!$code)
    {
@@ -1072,7 +1054,6 @@ function binaryToString($buf)
 
    return $res;
 }
-
 
 /**
 * Title

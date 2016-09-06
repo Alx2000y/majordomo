@@ -8,6 +8,10 @@
  * @version 1.0
  */
 
+list($usec, $sec) = explode(" ",microtime());
+$script_started_time = ((float)$usec + (float)$sec);
+
+
 //Define('MASTER_HOST', 'homenetserver.jbk'); // uncomment to use master host
 if (defined('MASTER_URL') && MASTER_URL != '')
 {
@@ -107,6 +111,13 @@ if (!$request && $commandLine)
 if (!$commandLine)
 {
    header('Content-Type: text/html; charset=utf-8');
+}
+
+
+if ($module != '') {
+ include_once(DIR_MODULES.$module.'/'.$module.'.class.php');
+ $mdl=new $module();
+ echo $mdl->usual($_GET);
 }
 
 if ($object != '')

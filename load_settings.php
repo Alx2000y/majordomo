@@ -1,7 +1,7 @@
 <?php
 
 if (!defined('ENVIRONMENT'))
-   error_reporting(E_ALL & ~(E_STRICT | E_NOTICE));
+   error_reporting(E_ALL & ~(E_STRICT | E_NOTICE | E_DEPRECATED));
 
 
 // get settings
@@ -25,6 +25,7 @@ if (defined('SETTINGS_SITE_TIMEZONE'))
 
 if (IsSet($_SERVER['SERVER_ADDR']) && IsSet($_SERVER['SERVER_PORT'])) {
  Define('SERVER_URL', 'http://' . $_SERVER['SERVER_ADDR'] . ':' . $_SERVER['SERVER_PORT']);
+ Define('SERVER_ADDR', $_SERVER['SERVER_ADDR']);
 } else {
  Define('SERVER_URL','http://localhost:80');
 }

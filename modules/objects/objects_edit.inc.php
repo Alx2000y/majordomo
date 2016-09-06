@@ -47,10 +47,10 @@
    $rec['DESCRIPTION']=$description;
   //updating 'Location' (select)
    global $location_id;
-   $rec['LOCATION_ID']=$location_id;
+   $rec['LOCATION_ID']=(int)$location_id;
 
    global $keep_history;
-   $rec['KEEP_HISTORY']=$keep_history;
+   $rec['KEEP_HISTORY']=(int)$keep_history;
 
 
   }
@@ -224,6 +224,11 @@
    if ($overwrite) {
     global $method_id;
     $method=SQLSelectOne("SELECT * FROM methods WHERE ID='".(int)$method_id."'");
+
+    if ($method['OBJECT_ID']) {
+     $obj=SQLSelectOne("SELECT ID, CLASS_ID FROM objects WHERE ID='".$method['OBJECT_ID']."'");
+     $method=SQLSelectOne("SELECT * FROM methods WHERE TITLE LIKE '".$method['TITLE']."' AND CLASS_ID='".$obj['CLASS_ID']."'");
+    }
 
     $out['METHOD_CLASS_ID']=$method['CLASS_ID'];
     $tmp=SQLSelectOne("SELECT * FROM classes WHERE ID='".$method['CLASS_ID']."'");

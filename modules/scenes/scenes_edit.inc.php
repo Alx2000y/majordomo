@@ -207,15 +207,18 @@
     global $type;
     $element['TYPE']=$type;
 
+    global $appear_animation;
+    $element['APPEAR_ANIMATION']=(int)$appear_animation;
+
     global $smart_repeat;
     $element['SMART_REPEAT']=(int)$smart_repeat;
 
     global $s3d_scene;
-    $element['S3D_SCENE']=$s3d_scene;
+    $element['S3D_SCENE']=$s3d_scene.'';
 
 
     global $easy_config;
-    if ($element['TYPE']=='switch' || $element['TYPE']=='informer' || $element['TYPE']=='warning') {
+    if ($element['TYPE']=='switch' || $element['TYPE']=='informer' || $element['TYPE']=='warning' || $element['TYPE']=='menuitem') {
      $element['EASY_CONFIG']=(int)$easy_config;
     } else {
      $element['EASY_CONFIG']=0;
@@ -253,6 +256,12 @@
 
     global $width;
     $element['WIDTH']=(int)$width;
+
+    if ($element['TYPE']=='menuitem' && !$element['WIDTH'] && !$element['HEIGHT']) {
+     $element['HEIGHT']=0;
+     $element['WIDTH']=200;
+    }
+
 
     global $background;
     $element['BACKGROUND']=(int)$background;
@@ -453,6 +462,28 @@
      $state_rec['CONDITION_VALUE']=1;
      $state_rec['ID']=SQLInsert('elm_states', $state_rec);
      $state_id=$state_rec['ID'];
+
+
+    } elseif (($element['TYPE']=='menuitem') && (!$state_rec['ID'] || $element['EASY_CONFIG'])) {
+
+     $wizard_data=array();
+
+     global $menuitem_select_id;
+     $wizard_data['MENU_ITEM_ID']=(int)$menuitem_select_id;
+
+     $element['WIZARD_DATA']=json_encode($wizard_data);
+
+     SQLUpdate('elements', $element);
+
+     SQLExec("DELETE FROM elm_states WHERE ELEMENT_ID=".(int)$element['ID']);
+
+     $state_rec=array();
+     $state_rec['TITLE']='default';
+     $state_rec['ELEMENT_ID']=$element['ID'];
+     $state_rec['HTML']='<iframe src="/menu.html?parent='.(int)$wizard_data['MENU_ITEM_ID'].'&from_scene=1" frameBorder="0" width="100%"></iframe>';
+     $state_rec['ID']=SQLInsert('elm_states', $state_rec);
+     $state_id=$state_rec['ID'];
+
 
 
     } elseif (($element['TYPE']=='informer') && (!$state_rec['ID'] || $element['EASY_CONFIG'])) {
@@ -740,20 +771,17 @@
   }
 
   //$elements=SQLSelect("SELECT `ID`, `SCENE_ID`, `TITLE`, `TYPE`, `TOP`, `LEFT`, `WIDTH`, `HEIGHT`, `CROSS_SCENE`, PRIORITY, (SELECT `IMAGE` FROM elm_states WHERE elements.ID = elm_states.element_ID LIMIT 1) AS `IMAGE` FROM elements WHERE SCENE_ID='".$rec['ID']."' ORDER BY PRIORITY DESC, TITLE");
-  $elements=$this->getElements("SCENE_ID='".$rec['ID']."' AND CONTAINER_ID=0");
 
-
+  if ($element['ID']) {
+   $elements=SQLSelect("SELECT `ID`, `SCENE_ID`, `TITLE`, `TYPE`, `TOP`, `LEFT`, `WIDTH`, `HEIGHT`, `CROSS_SCENE`, PRIORITY, (SELECT `IMAGE` FROM elm_states WHERE elements.ID = elm_states.element_ID LIMIT 1) AS `IMAGE` FROM elements WHERE SCENE_ID='".$rec['ID']."' AND CONTAINER_ID=0 ORDER BY PRIORITY DESC, TITLE");
+  } else {
+   $elements=$this->getElements("SCENE_ID='".$rec['ID']."' AND CONTAINER_ID=0");
+  }
+  //
   if (count($elements)) {
-  /*
-   $total=count($elements);
-   for($i=0;$i<$total;$i++) {
-     if ($elements[$i]['CSS_STYLE']!='default' && $elements[$i]['CSS_STYLE']!='') {
-      $elements[$i]['CSS_IMAGE']=$this->getCSSImage($elements[$i]['TYPE'], $elements[$i]['CSS_STYLE']);
-     }
-   }
-   */
    $out['ELEMENTS']=$elements;
   }
+
 
   if ($element['TYPE']=='container') {
    $sub_elements=SQLSelect("SELECT ID, TITLE FROM elements WHERE CONTAINER_ID=".(int)$element['ID']." ORDER BY PRIORITY DESC, TITLE");

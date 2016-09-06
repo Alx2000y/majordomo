@@ -16,8 +16,8 @@ include_once(DIR_MODULES . "control_modules/control_modules.class.php");
 
 $ctl = new control_modules();
 
-$sqlQuery = "SELECT * 
-               FROM classes 
+$sqlQuery = "SELECT *
+               FROM classes
               WHERE TITLE LIKE 'timer'";
 
 $timerClass = SQLSelectOne($sqlQuery);
@@ -60,39 +60,39 @@ while (1)
    $m = date('i');
    $h = date('h');
    $dt = date('Y-m-d');
-   
+
    if ($m != $old_minute)
    {
       //echo "new minute\n";
       $sqlQuery = "SELECT ID, TITLE
                      FROM objects
                     WHERE $o_qry";
-      
+
       $objects = SQLSelect($sqlQuery);
       $total = count($objects);
-      
+
       for ($i = 0; $i < $total; $i++)
       {
          echo date('H:i:s').' '.$objects[$i]['TITLE'] . "->onNewMinute\n";
          getObject($objects[$i]['TITLE'])->setProperty("time", date('Y-m-d H:i:s'));
          getObject($objects[$i]['TITLE'])->raiseEvent("onNewMinute");
       }
-      
+
       $old_minute = $m;
    }
-   
+
    if ($h != $old_hour)
    {
       $sqlQuery = "SELECT ID, TITLE
                      FROM objects
                     WHERE $o_qry";
-      
+
       //echo "new hour\n";
       $old_hour = $h;
       $objects = SQLSelect($sqlQuery);
       $total = count($objects);
-      
-      for($i = 0; $i < $total; $i++) 
+
+      for($i = 0; $i < $total; $i++)
       {
          echo date('H:i:s').' '.$objects[$i]['TITLE'] . "->onNewHour\n";
          getObject($objects[$i]['TITLE'])->raiseEvent("onNewHour");
@@ -102,7 +102,16 @@ while (1)
 
    }
 
-   $queue=SQLSelect("SELECT * FROM phistory_queue ORDER BY ID");
+   $keep=SQLSelect("SELECT DISTINCT VALUE_ID,KEEP_HISTORY FROM phistory_queue");
+   if ($keep[0]['VALUE_ID']) {
+    $total=count($keep);
+    for($i=0;$i<$total;$i++) {
+     $keep_rec=$keep[$i];
+     SQLExec("DELETE FROM phistory WHERE VALUE_ID='".$keep_rec['VALUE_ID']."' AND TO_DAYS(NOW())-TO_DAYS(ADDED)>".(int)$keep_rec['KEEP_HISTORY']);
+    }
+   }
+
+   $queue=SQLSelect("SELECT * FROM phistory_queue ORDER BY ID LIMIT 500");
    if ($queue[0]['ID']) {
     $total=count($queue);
     for($i=0;$i<$total;$i++) {
@@ -112,7 +121,7 @@ while (1)
 
      SQLExec("DELETE FROM phistory_queue WHERE ID='".$q_rec['ID']."'");
 
-     if ($value!=$old_value) {
+     if ($value!=$old_value || (defined('HISTORY_NO_OPTIMIZE') && HISTORY_NO_OPTIMIZE==1)) {
        SQLExec("DELETE FROM phistory WHERE VALUE_ID='".$q_rec['VALUE_ID']."' AND TO_DAYS(NOW())-TO_DAYS(ADDED)>".(int)$q_rec['KEEP_HISTORY']);
        $h=array();
        $h['VALUE_ID']=$q_rec['VALUE_ID'];
@@ -135,10 +144,9 @@ while (1)
        }
      }
 
-
     }
    }
-   
+
    if ($dt != $old_date)
    {
       //echo "new day\n";

@@ -111,9 +111,32 @@ function run() {
   }
   $this->data=$out;
   startMeasure('menu_template');
-  $p=new parser(DIR_TEMPLATES.$this->name."/".$this->name.".html", $this->data, $this);
+  if ($this->action=='') {
+
+   require_once ROOT.'lib/smarty/Smarty.class.php';
+   $smarty = new Smarty;
+   $smarty->setCacheDir(ROOT.'cached/template_c');
+
+   $smarty->setTemplateDir(ROOT.'./templates')
+          ->setCompileDir(ROOT.'./cached/templates_c')
+          ->setCacheDir(ROOT.'./cached');
+
+   $smarty->debugging = false;
+   $smarty->caching = true;
+   $smarty->setCaching(120);
+
+   foreach($out as $k=>$v) {
+    $smarty->assign($k, $v);
+   }
+
+
+   @$this->result=$smarty->fetch(DIR_TEMPLATES.'commands/menu.tpl');
+
+  } else {
+   $p=new parser(DIR_TEMPLATES.$this->name."/".$this->name.".html", $this->data, $this);
+   $this->result=$p->result;
+  }
   endMeasure('menu_template');
-  $this->result=$p->result;
 }
 /**
 * BackEnd
@@ -355,9 +378,101 @@ function admin(&$out) {
    }
    echo "OK";
   }
+
+// end calculation of execution time
+endMeasure('TOTAL');
+
+// print performance report
+//performanceReport();
+
+
   exit;
 
  }
+
+
+  if ($this->view_mode=='multiple_commands') {
+   global $selected;
+
+
+   if ($selected[0]) {
+
+  $res=array();
+  $commands=SQLSelect("SELECT * FROM commands WHERE ID IN (".implode(',', $selected).") ORDER BY PARENT_ID, ID");
+  $total=count($commands);
+
+  for($i=0;$i<$total;$i++) {
+   unset($commands[$i]['RENDER_TITLE']);
+   unset($commands[$i]['RENDER_DATA']);
+   unset($commands[$i]['RENDER_UPDATED']);
+  }
+
+  $res['COMMANDS']=$commands;
+
+  $data=serialize($res);
+
+   $filename=urlencode('items'.date('H-i-s'));
+
+   $ext = "menu";   // file extension
+   $mime_type = (PMA_USR_BROWSER_AGENT == 'IE' || PMA_USR_BROWSER_AGENT == 'OPERA')
+   ? 'application/octetstream'
+   : 'application/octet-stream';
+   header('Content-Type: ' . $mime_type);
+   if (PMA_USR_BROWSER_AGENT == 'IE')
+   {
+      header('Content-Disposition: inline; filename="' . $filename . '.' . $ext . '"');
+      header("Content-Transfer-Encoding: binary");
+      header('Expires: 0');
+      header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+      header('Pragma: public');
+      print $data;
+   } else {
+      header('Content-Disposition: attachment; filename="' . $filename . '.' . $ext . '"');
+      header("Content-Transfer-Encoding: binary");
+      header('Expires: 0');
+      header('Pragma: no-cache');
+      print $data;
+   }
+
+   exit;
+
+   } else {
+    $this->redirect("?");
+   }
+  }
+
+
+  if ($this->view_mode=='import_commands') {
+   global $file;
+   global $parent_id;
+
+   $seen_elements=array();
+
+   $data=unserialize(LoadFile($file));
+   if (is_array($data['COMMANDS'])) {
+    $elements=$data['COMMANDS'];
+
+   $total=count($elements);
+   for($i=0;$i<$total;$i++) {
+    $old_element_id=$elements[$i]['ID'];
+    unset($elements[$i]['ID']);
+    $elements[$i]['ID']=SQLInsert('commands', $elements[$i]);
+    $seen_elements[$old_element_id]=$elements[$i]['ID'];
+   }
+   for($i=0;$i<$total;$i++) {
+    if ($elements[$i]['PARENT_ID']) {
+     $elements[$i]['PARENT_ID']=(int)$seen_elements[$elements[$i]['PARENT_ID']];
+     if (!$elements[$i]['PARENT_ID']) {
+      $elements[$i]['PARENT_ID']=(int)$parent_id;
+     }
+     SQLUpdate('commands', $elements[$i]);
+    }
+   }
+
+   }
+
+   $this->redirect("?");
+  }
 
 
 

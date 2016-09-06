@@ -7,7 +7,7 @@
  * @param mixed $filter_details Filter details (default '')
  * @return void
  */
-function subscribeToEvent($module_name, $event_name, $filter_details = '')
+function subscribeToEvent($module_name, $event_name, $filter_details = '', $priority = 0)
 {
    $rec = SQLSelectOne("SELECT * FROM settings WHERE NAME = 'HOOK_EVENT_" . DBSafe(strtoupper($event_name)) . "'");
 
@@ -24,13 +24,9 @@ function subscribeToEvent($module_name, $event_name, $filter_details = '')
 
    $data = json_decode($rec['VALUE'], true);
    
-   if (!isset($data[$module_name]))
-   {
-      $data[$module_name] = 1;
-      $rec['VALUE']       = json_encode($data);
-      
-      SQLUpdate('settings', $rec);
-   }
+   $data[$module_name] = array('priority'=>$priority, 'filter'=>$filter_details);
+   $rec['VALUE']       = json_encode($data);
+   SQLUpdate('settings', $rec);
 }
 
 /**
@@ -69,19 +65,41 @@ function unsubscribeFromEvent($module_name, $event_name = '')
  */
 function processSubscriptions($event_name, $details = '')
 {
+
+   postToWebSocket($event_name, $details, 'PostEvent');
+
    if (!defined('SETTINGS_HOOK_EVENT_' . strtoupper($event_name)))
    {
       return 0;
    }
 
    $data = json_decode(constant('SETTINGS_HOOK_EVENT_' . strtoupper($event_name)), true);
+   //DebMes("Subscription data: ".serialize($data));
    
    if (is_array($data))
    {
-      foreach ($data as $k => $v)
-      {
-         $module_name    = $k;
-         $filter_details = $v;
+
+      if (!function_exists('cmpSubscribers')) {
+       function cmpSubscribers ($a, $b) { 
+        if ($a['priority'] == $b['priority']) return 0; 
+        return ($a['priority'] > $b['priority']) ? -1 : 1; 
+       } 
+      }
+
+
+      $data2=array();
+      foreach($data as $k => $v) {
+       $data2[]=array('module'=>$k, 'filter'=>$v['filter'], 'priority'=>(int)$v['priority']);
+      }
+
+      usort($data2, 'cmpSubscribers');
+
+      $total=count($data2);
+      for($i=0;$i<$total;$i++) {
+       
+         $module_name    = $data2[$i]['module'];
+         $filter_details = $data2[$i]['filter'];
+
          $modulePath     = DIR_MODULES . $module_name . '/' . $module_name . '.class.php';
 
          if (file_exists($modulePath))
@@ -91,14 +109,16 @@ function processSubscriptions($event_name, $details = '')
 
             if (method_exists($module_object, 'processSubscription'))
             {
-               DebMes("$module_name.processSubscription");
+               DebMes("$module_name.processSubscription ($event_name)");
                $module_object->processSubscription($event_name, $details);
+            } else {
+             DebMes("$module_name.processSubscription error (method not found)");
             }
+         } else {
+          DebMes("$module_name.processSubscription error (module class not found)");
          }
       }
    }
-
-   postToWebSocket($event_name, $details, 'PostEvent');
 
 }
 
@@ -121,7 +141,7 @@ function removeMissingSubscribers()
          foreach ($data as $k => $v)
          {
             $module_name = $k;
-            if (!file_exists(DIR_MODULES . 'modules/' . $module_name . '/' . $module_name . '.class.php'))
+            if (!file_exists(DIR_MODULES . $module_name . '/' . $module_name . '.class.php'))
             {
                unset($data[$module_name]);
                $changed = 1;

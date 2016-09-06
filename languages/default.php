@@ -159,8 +159,6 @@ $dictionary=array(
 
 
 'BY_URL'=>'By URL', 
-'TEST'=>'Test', 
-
 
 'COMMAND_LINE'=>'Using command-line', 
 
@@ -781,6 +779,13 @@ $dictionary=array(
 
 
 'SWITCH_SCENE_WHEN_ACTIVATED'=>'switch scene when activated', 
+'APPEAR_ANIMATION'=>'Appear animation', 
+'APPEAR_LEFTTORIGHT'=>'Left-to-Right', 
+'APPEAR_RIGHTTOLEFT'=>'Right-to-Left', 
+'APPEAR_TOPTOBOTTOM'=>'Top-to-Bottom', 
+'APPEAR_BOTTOMTOTOP'=>'Bottom-to-Top', 
+'APPEAR_BLINK'=>'Blink', 
+'APPEAR_SCALE'=>'Scale', 
 
 
 'ADD_NEW_ELEMENT'=>'Add new element', 

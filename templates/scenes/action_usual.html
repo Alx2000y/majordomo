@@ -1,5 +1,21 @@
 <style>
-[#inc elements.css#]
+.container_background {
+ border:1px solid rgba(0,0,0,0.2);
+ background-color:rgba(0,0,0,0.5);
+ padding:0px;
+}
+
+.html_background {
+ border:1px solid rgba(0,0,0,0.2);
+ background-color:rgba(0,0,0,0.5);
+ background-size:100%;
+ padding:0px;
+}
+
+
+[#begin ALL_TYPES#]
+ [#if HAS_STYLE!=""#][#inc ../../cms/scenes/styles/<#ALL_TYPES.TITLE#>/style.css#][#endif HAS_STYLE#]
+[#end ALL_TYPES#]
 </style>
 
 [#if "<#SETTINGS_SCENES_CLICKSOUND#>"!=""#]
@@ -36,6 +52,8 @@ $.fn.customContextMenu = function(callBack){
         var contextTimeout=0;
         var contextTop='';
         var contextLeft='';
+        var subscribedWebSockets=0;
+        var subscribedWebSocketsTimer;
 
         function EvalSound(soundobj) {
          //alert('zz');
@@ -316,7 +334,7 @@ new TWEEN.Tween( camera.position ).to( {
         function checkAllStates() {
          clearTimeout(checkTimer);
 
-         if (startedWebSockets==1) {
+         if (subscribedWebSockets==1) {
           firstRun=0;
           checkTimer=setTimeout('checkAllStates();', 3000);
           if (firstRun!=1 && refreshRun!=1) {
@@ -353,8 +371,8 @@ new TWEEN.Tween( camera.position ).to( {
         });
 
 
-
-        $.subscribe('wsConnected', function (_) {
+        function subscribeToScene() {
+         console.log('Sending scene subscription request...');
          var payload;
          payload = new Object();
          payload.action = 'Subscribe';
@@ -362,9 +380,21 @@ new TWEEN.Tween( camera.position ).to( {
          payload.data.TYPE='scenes';
          payload.data.SCENE_ID='<#SCENE_ID#>';
          wsSocket.send(JSON.stringify(payload));
+         subscribedWebSocketsTimer=setTimeout('subscribeToScene();', 3000);
+         return false;
+        }
+
+
+        $.subscribe('wsConnected', function (_) {
+         subscribeToScene();
         });
 
         $.subscribe('wsData', function (_, response) {
+          if (response.action=='subscribed') {
+           console.log('Subscription confirmed.');
+           clearTimeout(subscribedWebSocketsTimer);
+           subscribedWebSockets=1;
+          }
           if (response.action=='states') {
            processCheckStates(response.data);
           }
@@ -595,6 +625,7 @@ function onDocumentMouseDown( event ) {
    [#endif DRAGGABLE#]
    [#endif#] 
    style="
+   [#if "<#DRAGGABLE#>"=="1"#]border:1px solid blue;[#endif#]
    [#if "<#ELEMENTS.POSITION_TYPE#>"=="0"#]position:absolute;left:<#ELEMENTS.LEFT#>px;top:<#ELEMENTS.TOP#>px;[#endif ELEMENTS#]
    [#if "<#ELEMENTS.ZINDEX#>"!=""#]z-index:<#ELEMENTS.ZINDEX#>;[#endif#]
    [#if ("<#ELEMENTS.WIDTH#>"!="0")#]width:<#ELEMENTS.WIDTH#>px;[#endif#][#if ("<#ELEMENTS.HEIGHT#>"!="0")#]height:<#ELEMENTS.HEIGHT#>px;[#endif#]

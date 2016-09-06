@@ -20,6 +20,14 @@
  * @license http://opensource.org/licenses/mit-license.php MIT License
  * @link https://github.com/sergejey/majordomo/blob/master/lib/mysql.class.php
  */
+
+if (!defined('MYSQL_BOTH')) {
+ define('MYSQL_BOTH',MYSQLI_BOTH);
+ define('MYSQL_NUM',MYSQLI_NUM);
+ define('MYSQL_ASSOC',MYSQLI_ASSOC);
+}
+
+
 class mysql
 {
    /**
@@ -252,8 +260,12 @@ class mysql
       
       foreach ($data as $field => $value)
       {
-         if (!is_Numeric($field))
-            $qry .= "`$field`='" . $this->DBSafe1($value) . "', ";
+         if (is_Numeric($field)) continue;
+         if (!is_null($value)) {
+          $qry .= "`$field`='" . $this->DBSafe1($value) . "', ";
+         } else {
+          $qry .= "`$field`=NULL, ";
+         }
       }
       
       $qry  = substr($qry, 0, strlen($qry) - 2);
@@ -291,11 +303,9 @@ class mysql
       
       foreach ($data as $field => $value)
       {
-         if (!is_numeric($field))
-         {
-            $fields .= "`$field`, ";
-            $values .= "'" . $this->DBSafe1($value) . "', ";
-         }
+         if (is_Numeric($field)) continue;
+         $fields .= "`$field`, ";
+         $values .= "'" . $this->DBSafe1($value) . "', ";
       }
       
       $fields = substr($fields, 0, strlen($fields) - 2);
@@ -361,9 +371,10 @@ class mysql
    {
 
 
-
-      registerError('sql', mysqli_errno($this->dbh) . ": " . mysqli_error($this->dbh) . "\n$query");
-      new error(mysqli_errno($this->dbh) . ": " . mysqli_error($this->dbh) . "<br>$query", 1);
+      $err_no = mysqli_errno($this->dbh);
+      $err_details = mysqli_error($this->dbh);
+      registerError('sql', $err_no . ": " . $err_details . "\n$query");
+      new custom_error($err_no . ": " . $err_details . "<br>$query", 1);
       
       return 1;
    }

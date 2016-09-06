@@ -158,6 +158,9 @@ class MajordomoApplication extends Application
              $this->_clients[$client_id]->subscribedTo['events'][mb_strtolower($event, 'UTF-8')]=1;
             }
           }
+          $send_data=array();
+          $encodedData = $this->_encodeData('subscribed', json_encode($send_data));
+          $this->_clients[$client_id]->send($encodedData);
          }
         }
 
@@ -191,6 +194,8 @@ class MajordomoApplication extends Application
           //process property update
           global $scenes;
           global $commands;
+
+          $found_subscribers=0;
 
           foreach($this->_clients as $client) {
            if (IsSet($client->watchedProperties[$property_name])) {
@@ -257,6 +262,12 @@ class MajordomoApplication extends Application
              }
 
             }
+           }
+          }
+
+          if (!$found_subscribers) {
+           if (defined('DEBUG_WEBSOCKETS') && DEBUG_WEBSOCKETS==1) {
+            echo date('Y-m-d H:i:s').(" No subscribers for ".$property_name."\n");
            }
           }
 

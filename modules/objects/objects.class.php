@@ -11,6 +11,7 @@
 //
 //
 class objects extends module {
+
 /**
 * objects
 *
@@ -32,20 +33,20 @@ function objects() {
 * @access public
 */
 function saveParams($data=1) {
- $p=array();
+ $data=array();
  if (IsSet($this->id)) {
-  $p["id"]=$this->id;
+  $data["id"]=$this->id;
  }
  if (IsSet($this->view_mode)) {
-  $p["view_mode"]=$this->view_mode;
+  $data["view_mode"]=$this->view_mode;
  }
  if (IsSet($this->edit_mode)) {
-  $p["edit_mode"]=$this->edit_mode;
+  $data["edit_mode"]=$this->edit_mode;
  }
  if (IsSet($this->tab)) {
-  $p["tab"]=$this->tab;
+  $data["tab"]=$this->tab;
  }
- return parent::saveParams($p);
+ return parent::saveParams($data);
 }
 /**
 * getParams
@@ -281,7 +282,7 @@ function usual(&$out) {
    $this->class_id=$rec['CLASS_ID'];
    $this->description=$rec['DESCRIPTION'];
    $this->location_id=$rec['LOCATION_ID'];
-   $this->keep_history=$rec['KEEP_HISTORY'];
+   //$this->keep_history=$rec['KEEP_HISTORY'];
   } else {
    return false;
   }
@@ -419,31 +420,8 @@ function usual(&$out) {
     $url.='&'.urlencode($k).'='.urlencode($v);
    }
   }
-  //echo DOC_ROOT.'/obj.bat '.utf2win().'.'.$name.' '.$p."<br>";
-  //$cmd=(DOC_ROOT.'/obj.bat '.utf2win($this->object_title).'.'.$name.' '.$p);
-  //echo $url;
 
-$ch = curl_init();
-
-// set URL and other appropriate options
-curl_setopt($ch, CURLOPT_URL, $url);
-/*
-curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
-curl_setopt($ch, CURLOPT_CONNECTTIMEOUT_MS, 500);
-curl_setopt($ch, CURLOPT_TIMEOUT, 1);
-curl_setopt($ch, CURLOPT_TIMEOUT_MS, 500);
-*/
-curl_setopt($ch, CURLOPT_HEADER, 0);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-$data=curl_exec($ch);
-curl_close($ch);
-
-//$mh = curl_multi_init();
-//curl_multi_add_handle($mh,$ch);
-//curl_multi_exec($mh,$running);
-
-  //popen("start /B ". $cmd, "r");
-
+  $data=getURL($url, 0);
   
  }
 
@@ -645,11 +623,17 @@ curl_close($ch);
 
   startMeasure('setProperty');
   startMeasure('setProperty ('.$property.')');
+
+  if (is_null($value)) {
+   $value='';
+  }
+
   $id=$this->getPropertyByName($property, $this->class_id, $this->id);
   $old_value='';
 
   $cached_name='MJD:'.$this->object_title.'.'.$property;
 
+  startMeasure('setproperty_update');
   if ($id) {
    $prop=SQLSelectOne("SELECT * FROM properties WHERE ID='".$id."'");
    $v=SQLSelectOne("SELECT * FROM pvalues WHERE PROPERTY_ID='".(int)$id."' AND OBJECT_ID='".(int)$this->id."'");
@@ -657,11 +641,11 @@ curl_close($ch);
    $v['VALUE']=$value;
    if ($v['ID']) {
     $v['UPDATED']=date('Y-m-d H:i:s');
-    if ($old_value!=$value) {
+    //if ($old_value!=$value) {
      SQLUpdate('pvalues', $v);
-    } else {
-     SQLExec("UPDATE pvalues SET UPDATED='".$v['UPDATED']."' WHERE ID='".$v['ID']."'");
-    }
+    //} else {
+    // SQLExec("UPDATE pvalues SET UPDATED='".$v['UPDATED']."' WHERE ID='".$v['ID']."'");
+    //}
    } else {
     $v['PROPERTY_ID']=$id;
     $v['OBJECT_ID']=$this->id;
@@ -682,16 +666,21 @@ curl_close($ch);
     $v['UPDATED']=date('Y-m-d H:i:s');
     $v['ID']=SQLInsert('pvalues', $v);
   }
+  endMeasure('setproperty_update');
 
   saveToCache($cached_name, $value);
 
   if (function_exists('postToWebSocket')) {
+   startMeasure('setproperty_postwebsocket');
    postToWebSocket($this->object_title.'.'.$property, $value);
+   endMeasure('setproperty_postwebsocket');
   }
 
+  /*
   if ($this->keep_history>0) {
    $prop['KEEP_HISTORY']=$this->keep_history;
   }
+  */
 
   if (IsSet($prop['KEEP_HISTORY']) && ($prop['KEEP_HISTORY']>0)) {
    $q_rec=array();
@@ -708,7 +697,6 @@ curl_close($ch);
    global $property_linked_history;
    if (!$property_linked_history[$property][$prop['ONCHANGE']]) {
     $property_linked_history[$property][$prop['ONCHANGE']]=1;
-    global $on_change_called;
     $params=array();
     $params['PROPERTY']=$property;
     $params['NEW_VALUE']=(string)$value;
@@ -730,13 +718,14 @@ curl_close($ch);
    $total=count($tmp);
 
 
-
+   startMeasure('linkedModulesProcessing');
    for($i=0;$i<$total;$i++) {
     $linked_module=trim($tmp[$i]);
 
     if (isset($no_linked[$linked_module])) {
      continue;
     }
+    startMeasure('linkedModule'.$linked_module);
     if (file_exists(DIR_MODULES.$linked_module.'/'.$linked_module.'.class.php')) {
      include_once(DIR_MODULES.$linked_module.'/'.$linked_module.'.class.php');
      $module_object=new $linked_module;
@@ -744,7 +733,9 @@ curl_close($ch);
       $module_object->propertySetHandle($this->object_title, $property, $value);
      }
     }
+    endMeasure('linkedModule'.$linked_module);
    }
+   endMeasure('linkedModulesProcessing');
   }
 
   /*
@@ -808,6 +799,7 @@ objects - Objects
 */
   $data = <<<EOD
  objects: ID int(10) unsigned NOT NULL auto_increment
+ objects: SYSTEM varchar(255) NOT NULL DEFAULT ''
  objects: TITLE varchar(255) NOT NULL DEFAULT ''
  objects: CLASS_ID int(10) NOT NULL DEFAULT '0'
  objects: DESCRIPTION text
